@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 
 const LEVELS = ['Primaire', 'Collège', 'Lycée'];
 
-const EMPTY_FORM = { name: '', level: 'Primaire', teacher: '', max: 30, subjects: 8 };
+const EMPTY_FORM = { name: '', level: 'Primaire', teacher: '', max: 30, subjects: [] };
 
 const Classes = () => {
   const { classes, students, teachers, subjects, subjectData, addSubject, addClass, updateClass, deleteClass } = useAppData();
@@ -34,7 +34,9 @@ const Classes = () => {
         ...c,
         elevesCount: students.filter(s => s.class === c.name).length,
         teacher: teacherNames.join(', ') || c.teacher,
-        subjects: teacherSubjects.join(', ') || c.subjects,
+        subjects: teacherSubjects.length > 0
+          ? teacherSubjects
+          : (Array.isArray(c.subjects) ? c.subjects : []),
       };
     });
   }, [classes, students, teachers]);
@@ -67,7 +69,7 @@ const Classes = () => {
   };
 
   const openEdit = (c) => {
-    setForm({ name: c.name, level: c.level || 'Primaire', teacher: c.teacher || '', max: c.max, subjects: c.subjects });
+    setForm({ name: c.name, level: c.level || 'Primaire', teacher: c.teacher || '', max: c.max, subjects: Array.isArray(c.subjects) ? [...c.subjects] : [] });
     setEditClass(c);
     setShowModal(true);
   };
@@ -75,7 +77,7 @@ const Classes = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const data = { ...form, max: Number(form.max), subjects: Number(form.subjects), status: editClass ? undefined : 'Actif' };
+      const data = { ...form, max: Number(form.max), status: editClass ? undefined : 'Actif' };
       if (editClass) {
         await updateClass(editClass.id, data);
         showToast('Classe modifiée avec succès', 'success');
@@ -227,6 +229,7 @@ const Classes = () => {
                   <th className="col-contact">Enseignant</th>
                   <th className="col-classe">Élèves</th>
                   <th className="col-date">Capacité max</th>
+                  <th className="col-id">Matières</th>
                   <th className="col-statut">Statut</th>
                   <th className="col-actions" style={{ width: 110 }}>Actions</th>
                 </tr>
@@ -252,6 +255,17 @@ const Classes = () => {
                       {c.elevesCount || 0}
                     </td>
                     <td style={{ fontSize: 13, color: '#57534e' }}>{c.max || '-'}</td>
+                    <td>
+                      {Array.isArray(c.subjects) && c.subjects.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                          {c.subjects.map(s => (
+                            <span key={s} style={{ display: 'inline-block', padding: '2px 8px', background: '#f5f3ee', borderRadius: 12, fontSize: 11, color: '#57534e', fontWeight: 500 }}>{s}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontSize: 12 }}>Non définies</span>
+                      )}
+                    </td>
                     <td>
                       <button
                         onClick={() => toggleStatus(c)}
@@ -320,13 +334,35 @@ const Classes = () => {
               <div className="form-row">
                 <div className="form-group">
                 <label>Niveau d'enseignement</label>
-                  <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))}>
+                  <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value, subjects: [] }))}>
                     {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
                   <label>Capacité max.</label>
                   <input type="number" min="1" value={form.max} onChange={e => setForm(f => ({ ...f, max: e.target.value }))} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Matières enseignées ({form.subjects.length} sélectionnée{form.subjects.length > 1 ? 's' : ''})</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, maxHeight: 140, overflowY: 'auto', padding: '4px 0' }}>
+                  {subjectData.filter(s => s.level === form.level).map(s => {
+                    const checked = form.subjects.includes(s.name);
+                    return (
+                      <label key={s.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: checked ? '#ecfdf5' : '#f5f3ee', borderRadius: 20, fontSize: 12.5, cursor: 'pointer', border: checked ? '1px solid #0d7a5e' : '1px solid transparent', color: checked ? '#0d7a5e' : '#57534e', fontWeight: checked ? 600 : 400, transition: 'all .15s' }}>
+                        <input type="checkbox" checked={checked} onChange={() => {
+                          setForm(f => ({
+                            ...f,
+                            subjects: checked ? f.subjects.filter(x => x !== s.name) : [...f.subjects, s.name]
+                          }));
+                        }} style={{ accentColor: '#0d7a5e' }} />
+                        {s.name}
+                      </label>
+                    );
+                  })}
+                  {subjectData.filter(s => s.level === form.level).length === 0 && (
+                    <span style={{ fontSize: 12.5, color: '#9ca3af' }}>Aucune matière pour ce niveau. Créez-en une d'abord.</span>
+                  )}
                 </div>
               </div>
               <div className="modal-actions">

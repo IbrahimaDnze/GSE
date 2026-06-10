@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import { exportToCSV } from '../utils/export';
 import { useToast } from '../context/ToastContext';
+import jsPDF from 'jspdf';
+import api from '../api/axios';
 
 const PALETTE = ['#d97706', '#db2777', '#10b981', '#7c3aed', '#6366f1', '#0891b2', '#be185d', '#0d9488', '#ca8a04', '#1d4ed8'];
 
-const gradeColor = (g) => {
+const gradeColor = (g, maxScore = 20) => {
   if (!g && g !== 0) return { color: '#d4cfc4', bg: 'transparent' };
-  if (g >= 15) return { color: '#065f46', bg: '#ecfdf5' };
-  if (g >= 10) return { color: '#1a1a2e', bg: 'transparent' };
+  const threshold = maxScore / 2;
+  if (g >= maxScore * 0.75) return { color: '#065f46', bg: '#ecfdf5' };
+  if (g >= threshold) return { color: '#1a1a2e', bg: 'transparent' };
   return { color: '#b91c1c', bg: '#fef2f2' };
 };
 
@@ -18,13 +21,14 @@ const avg = (gradeObj, subjectList) => {
   return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
 };
 
-const getMention = (average) => {
+const getMention = (average, maxScore = 20) => {
   if (average === null) return { label: '—', style: { color: '#9ca3af' } };
   const a = parseFloat(average);
-  if (a >= 16) return { label: 'Très Bien', style: { color: '#065f46' } };
-  if (a >= 14) return { label: 'Bien', style: { color: '#0d7a5e' } };
-  if (a >= 12) return { label: 'Assez Bien', style: { color: '#92400e' } };
-  if (a >= 10) return { label: 'Passable', style: { color: '#57534e' } };
+  const r = maxScore / 20;
+  if (a >= 16 * r) return { label: 'Très Bien', style: { color: '#065f46' } };
+  if (a >= 14 * r) return { label: 'Bien', style: { color: '#0d7a5e' } };
+  if (a >= 12 * r) return { label: 'Assez Bien', style: { color: '#92400e' } };
+  if (a >= 10 * r) return { label: 'Passable', style: { color: '#57534e' } };
   return { label: 'Insuffisant', style: { color: '#b91c1c' } };
 };
 
@@ -48,22 +52,28 @@ const Grades = () => {
   const [editingGrade, setEditingGrade] = useState(null);
   const [showBulletinModal, setShowBulletinModal] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState(null);
-  const [form, setForm] = useState({ studentName: '', matricule: '', class: classNames[0] || '', ...EMPTY_FORM_VALUES });
+  const [form, setForm] = useState({ studentName: '', matricule: '', class: '', trimestre: '', ...EMPTY_FORM_VALUES });
   const formLevel = getLevelForClass(form.class);
-  const filteredSubjects = subjectData.filter(sd => !formLevel || sd.level === formLevel).map(sd => sd.name);
+  const maxScore = formLevel === 'Primaire' ? 10 : 20;
+  const filteredSubjects = form.class ? (classes.find(c => c.name === form.class)?.subjects || [...new Set(subjectData.filter(sd => sd.level === formLevel).map(sd => sd.name))]) : [];
   const { showToast } = useToast();
 
   const filteredGrades = grades.filter(g => g.class === filterClass && g.trimestre === filterTrimestre);
   const studentsInClass = students.filter(s => s.class === filterClass);
+  const tableLevel = getLevelForClass(filterClass);
+  const tableMaxScore = tableLevel === 'Primaire' ? 10 : 20;
+  const tableSubjects = filterClass ? (classes.find(c => c.name === filterClass)?.subjects || [...new Set(subjectData.filter(sd => sd.level === tableLevel).map(sd => sd.name))]) : [];
+  const tableSubjectColors = {};
+  tableSubjects.forEach((s, i) => { tableSubjectColors[s] = PALETTE[i % PALETTE.length]; });
 
-  const allAvgs = filteredGrades.map(g => parseFloat(avg(g, subjects))).filter(v => !isNaN(v));
+  const allAvgs = filteredGrades.map(g => parseFloat(avg(g, tableSubjects))).filter(v => !isNaN(v));
   const generalAvg = allAvgs.length > 0 ? (allAvgs.reduce((a, b) => a + b, 0) / allAvgs.length).toFixed(1) : null;
-  const bestGrade = filteredGrades.length > 0 ? Math.max(...subjects.flatMap(s => filteredGrades.map(g => Number(g[s]) || 0))) : null;
-  const belowAvgCount = allAvgs.filter(a => a < 10).length;
-  const topCount = allAvgs.filter(a => a >= 15).length;
+  const bestGrade = filteredGrades.length > 0 ? Math.max(...tableSubjects.flatMap(s => filteredGrades.map(g => Number(g[s]) || 0))) : null;
+  const belowAvgCount = allAvgs.filter(a => a < tableMaxScore * 0.5).length;
+  const topCount = allAvgs.filter(a => a >= tableMaxScore * 0.75).length;
 
   const openAdd = () => {
-    setForm({ studentName: '', matricule: '', class: filterClass, ...EMPTY_FORM_VALUES });
+    setForm({ studentName: '', matricule: '', class: '', trimestre: '', ...EMPTY_FORM_VALUES });
     setEditingGrade(null);
     setShowModal(true);
   };
@@ -79,7 +89,7 @@ const Grades = () => {
   };
 
   const openEdit = (g) => {
-    const vals = { studentName: g.studentName, matricule: g.matricule || '', class: g.class || filterClass };
+    const vals = { studentName: g.studentName, matricule: g.matricule || '', class: g.class || '', trimestre: g.trimestre || filterTrimestre };
     subjects.forEach(s => { vals[s] = g[s] ?? ''; });
     setForm(vals);
     setEditingGrade(g);
@@ -93,22 +103,23 @@ const Grades = () => {
         studentName: form.studentName,
         matricule: form.matricule,
         class: form.class || filterClass,
-        trimestre: filterTrimestre,
+        trimestre: form.trimestre || filterTrimestre,
       };
       subjects.forEach(s => {
         if (form[s] !== '') data[s] = Number(form[s]);
       });
       if (editingGrade) {
-        await syncGradeWithStudent(editingGrade.id, data);
+        await syncGradeWithStudent(editingGrade._id || editingGrade.id, data);
         showToast('Notes modifiées avec succès', 'success');
       } else {
-        const gradeId = `g-${Date.now()}`;
-        await addGrade({ ...data, id: gradeId });
-        await syncGradeWithStudent(gradeId, data);
+        const created = await addGrade(data);
+        await syncGradeWithStudent(created._id, data);
         showToast('Notes ajoutées avec succès', 'success');
       }
+      setFilterClass(data.class);
+      setFilterTrimestre(data.trimestre);
       setShowModal(false);
-      setForm({ studentName: '', matricule: '', class: filterClass, ...EMPTY_FORM_VALUES });
+      setForm({ studentName: '', matricule: '', class: '', trimestre: '', ...EMPTY_FORM_VALUES });
       setEditingGrade(null);
     } catch (err) {
       showToast(err.response?.data?.message || 'Erreur lors de l\'enregistrement', 'error');
@@ -120,8 +131,8 @@ const Grades = () => {
     exportToCSV(
       filteredGrades.map(g => ({
         Élève: g.studentName, Classe: g.class, Trimestre: g.trimestre,
-        ...Object.fromEntries(subjects.map(s => [s, g[s] ?? ''])),
-        Moyenne: avg(g, subjects) ?? '',
+        ...Object.fromEntries(tableSubjects.map(s => [s, g[s] ?? ''])),
+        Moyenne: avg(g, tableSubjects) ?? '',
       })),
       `notes_${filterClass}_${filterTrimestre}`
     );
@@ -142,47 +153,185 @@ const Grades = () => {
     setShowBulletinModal(true);
   };
 
-  const handleDownloadBulletin = (grade) => {
-    const bulletinContent = {
-      studentName: grade.studentName,
-      matricule: grade.matricule || 'N/A',
-      class: grade.class,
-      trimestre: grade.trimestre === 'T1' ? '1er Trimestre' : grade.trimestre === 'T2' ? '2ème Trimestre' : '3ème Trimestre',
-      date: new Date().toLocaleDateString('fr-FR'),
-      subjects: subjects.map(s => ({
-        name: s,
-        grade: grade[s] !== undefined && grade[s] !== '' ? grade[s] : '—',
-        color: grade[s] !== undefined && grade[s] !== '' ? gradeColor(Number(grade[s])) : { color: '#d4cfc4', bg: 'transparent' }
-      })),
-      average: avg(grade, subjects),
-      mention: getMention(avg(grade, subjects))
-    };
-    const csvContent = [
-      ['Bulletin Scolaire'],
-      ['Élève', bulletinContent.studentName],
-      ['Matricule', bulletinContent.matricule],
-      ['Classe', bulletinContent.class],
-      ['Trimestre', bulletinContent.trimestre],
-      ['Date', bulletinContent.date],
-      [],
-      ['Matière', 'Note'],
-      ...bulletinContent.subjects.map(s => [s.name, s.grade]),
-      [],
-      ['Moyenne générale', bulletinContent.average || '—'],
-      ['Mention', bulletinContent.mention.label]
-    ].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Bulletin_${bulletinContent.studentName}_${bulletinContent.trimestre}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownloadBulletin = async (grade) => {
+    const bulletinLevel = getLevelForClass(grade.class);
+    const bulletinSubjects = classes.find(c => c.name === grade.class)?.subjects || [...new Set(subjectData.filter(sd => !bulletinLevel || sd.level === bulletinLevel).map(sd => sd.name))];
+    const maxNote = bulletinLevel === 'Primaire' ? 10 : 20;
+    const average = avg(grade, bulletinSubjects);
+    const mention = getMention(average, maxNote);
+
+    let schoolName = 'École Privée';
+    let logoUrl = '';
+    try {
+      const raw = localStorage.getItem('school_settings');
+      if (raw) {
+        const s = JSON.parse(raw);
+        schoolName = s.schoolName || schoolName;
+        logoUrl = s.logo || '';
+      }
+    } catch {}
+    if (!logoUrl) {
+      try {
+        const settingsRes = await api.get('/settings');
+        logoUrl = settingsRes.data.logo || '';
+        schoolName = settingsRes.data.schoolName || schoolName;
+      } catch {}
+    }
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+    const cl = '#0d7a5e';
+    const gold = '#b8860b';
+    const gray = '#57534e';
+
+    // ── Header band ──
+    doc.setFillColor('#1e3a5f');
+    doc.rect(0, 0, pw, 42, 'F');
+
+    // Logo
+    if (logoUrl) {
+      try {
+        if (logoUrl.startsWith('data:')) {
+          doc.addImage(logoUrl, 'PNG', 14, 6, 24, 24);
+        } else {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = logoUrl;
+          await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          doc.addImage(canvas.toDataURL('image/png'), 'PNG', 14, 6, 24, 24);
+        }
+      } catch {}
+    }
+
+    doc.setTextColor('#ffffff');
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text(schoolName, pw / 2, 16, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text('BULLETIN SCOLAIRE', pw / 2, 26, { align: 'center' });
+
+    doc.setFontSize(9);
+    doc.text('Année scolaire ' + new Date().getFullYear() + ' / ' + (new Date().getFullYear() + 1), pw / 2, 34, { align: 'center' });
+
+    doc.setFillColor(gold);
+    doc.rect(50, 37, pw - 100, 1.2, 'F');
+
+    // ── Info student ──
+    const infoY = 48;
+    doc.setDrawColor('#e8e4db');
+    doc.setFillColor('#f8f7f3');
+    doc.roundedRect(14, infoY, pw - 28, 32, 3, 3, 'FD');
+
+    doc.setTextColor('#1a1a2e');
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Élève : ' + grade.studentName, 22, infoY + 10);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(gray);
+    doc.text('Matricule : ' + (grade.matricule || 'N/A'), 22, infoY + 20);
+    doc.text('Classe : ' + grade.class, pw / 2 + 10, infoY + 10);
+    doc.text('Trimestre : ' + (grade.trimestre === 'T1' ? '1er' : grade.trimestre === 'T2' ? '2ème' : '3ème'), pw / 2 + 10, infoY + 20);
+
+    // ── Table header ──
+    const th = 9;
+    const colX = [14, 90, 130, 170];
+    const colW = [76, 40, 40, 36];
+    const rowH = 8;
+
+    let ty = infoY + 44;
+    doc.setFillColor(cl);
+    doc.rect(14, ty, pw - 28, th, 'F');
+    doc.setTextColor('#ffffff');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    const tHeaders = ['Matière', 'Note', 'Appréciation', 'Moy.'];
+    tHeaders.forEach((h, i) => doc.text(h, colX[i] + 4, ty + 6));
+
+    // ── Table rows ──
+    ty += th;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    bulletinSubjects.forEach((s, i) => {
+      const gval = grade[s] !== undefined && grade[s] !== '' ? Number(grade[s]) : null;
+      const isEven = i % 2 === 0;
+      if (isEven) {
+        doc.setFillColor('#faf9f6');
+        doc.rect(14, ty, pw - 28, rowH, 'F');
+      }
+      doc.setTextColor('#1a1a2e');
+      doc.text(s, colX[0] + 4, ty + 6);
+
+      if (gval !== null) {
+        doc.setTextColor(gval >= maxNote * 0.75 ? '#065f46' : gval >= maxNote * 0.5 ? '#1a1a2e' : '#b91c1c');
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(gval), colX[1] + 4, ty + 6);
+        doc.setFont('helvetica', 'normal');
+        const appr = gval >= maxNote * 0.75 ? 'Excellent' : gval >= maxNote * 0.6 ? 'Bien' : gval >= maxNote * 0.5 ? 'Passable' : 'Insuffisant';
+        doc.setTextColor(gray);
+        doc.text(appr, colX[2] + 4, ty + 6);
+      } else {
+        doc.setTextColor('#d4cfc4');
+        doc.text('—', colX[1] + 4, ty + 6);
+        doc.text('Non noté', colX[2] + 4, ty + 6);
+      }
+
+      // separator line
+      doc.setDrawColor('#e8e4db');
+      doc.line(14, ty + rowH, pw - 14, ty + rowH);
+      ty += rowH;
+    });
+
+    // ── Average row ──
+    doc.setFillColor('#f0fdf4');
+    doc.rect(14, ty, pw - 28, rowH + 2, 'F');
+    doc.setDrawColor(cl);
+    doc.setLineWidth(0.8);
+    doc.line(14, ty, pw - 14, ty);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor('#1a1a2e');
+    doc.text('MOYENNE GÉNÉRALE', colX[0] + 4, ty + 7);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(cl);
+    const avgText = average ? average + '/' + maxNote : '—';
+    doc.text(avgText, pw / 2, ty + 7, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setTextColor('#1a1a2e');
+    doc.text(mention.label, colX[3] + 4, ty + 7);
+
+    ty += rowH + 6;
+
+    // ── Info band at bottom ──
+    const remaining = ph - ty - 14;
+    if (remaining > 30) {
+      doc.setDrawColor('#e8e4db');
+      doc.setFillColor('#f8f7f3');
+      doc.roundedRect(14, ty, pw - 28, 26, 3, 3, 'FD');
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(gray);
+      doc.text('Date d\'édition : ' + new Date().toLocaleDateString('fr-FR'), 22, ty + 10);
+      doc.text('Cachet et signature', pw - 50, ty + 10);
+      doc.line(pw - 60, ty + 18, pw - 22, ty + 18);
+    }
+
+    doc.save(`Bulletin_${grade.studentName}_${grade.trimestre}.pdf`);
   };
 
-  const colAvgs = subjects.map(s => {
+  const colAvgs = tableSubjects.map(s => {
     const scores = filteredGrades.map(g => Number(g[s])).filter(n => !isNaN(n) && n >= 0);
     return scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '—';
   });
@@ -207,7 +356,7 @@ const Grades = () => {
             <i className="fa-solid fa-calculator"></i>
           </div>
           <div>
-            <div className="stu-stat-value">{generalAvg ? `${generalAvg}/20` : '—'}</div>
+            <div className="stu-stat-value">{generalAvg ? `${generalAvg}/${tableMaxScore}` : '—'}</div>
             <div className="stu-stat-label">Moy. générale</div>
           </div>
         </div>
@@ -216,7 +365,7 @@ const Grades = () => {
             <i className="fa-solid fa-star"></i>
           </div>
           <div>
-            <div className="stu-stat-value">{bestGrade !== null ? `${bestGrade}/20` : '—'}</div>
+            <div className="stu-stat-value">{bestGrade !== null ? `${bestGrade}/${tableMaxScore}` : '—'}</div>
             <div className="stu-stat-label">Meilleure note</div>
           </div>
         </div>
@@ -226,7 +375,7 @@ const Grades = () => {
           </div>
           <div>
             <div className="stu-stat-value">{belowAvgCount}</div>
-            <div className="stu-stat-label">En dessous de 10</div>
+            <div className="stu-stat-label">En dessous de {tableMaxScore * 0.5}</div>
           </div>
         </div>
         <div className="stu-stat-card" style={{ borderTopColor: '#b8860b' }}>
@@ -235,22 +384,25 @@ const Grades = () => {
           </div>
           <div>
             <div className="stu-stat-value">{topCount}</div>
-            <div className="stu-stat-label">≥ 15/20</div>
+            <div className="stu-stat-label">≥ {tableMaxScore * 0.75}/{tableMaxScore}</div>
           </div>
         </div>
       </div>
 
-      <div className="stu-filters">
+      <div className="stu-filters" style={{ background: '#f8f7f3', padding: '12px 16px', borderRadius: 12, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18, border: '1px solid #e8e4db' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#57534e', marginRight: 4 }}>Filtrer par</div>
         <div className="stu-filter-group">
-          <i className="fa-solid fa-school"></i>
-          <select value={filterClass} onChange={e => setFilterClass(e.target.value)}>
+          <i className="fa-solid fa-school" style={{ left: 12 }}></i>
+          <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ paddingLeft: 32, minWidth: 170 }}>
             {classNames.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="stu-filter-group">
-          <i className="fa-solid fa-calendar"></i>
-          <select value={filterTrimestre} onChange={e => setFilterTrimestre(e.target.value)}>
-            {['T1','T2','T3'].map(t => <option key={t} value={t}>{t === 'T1' ? '1er Trimestre' : t === 'T2' ? '2ème Trimestre' : '3ème Trimestre'}</option>)}
+          <i className="fa-solid fa-calendar" style={{ left: 12 }}></i>
+          <select value={filterTrimestre} onChange={e => setFilterTrimestre(e.target.value)} style={{ paddingLeft: 32, minWidth: 170 }}>
+            <option value="T1">1er Trimestre</option>
+            <option value="T2">2ème Trimestre</option>
+            <option value="T3">3ème Trimestre</option>
           </select>
         </div>
       </div>
@@ -259,7 +411,7 @@ const Grades = () => {
         {filteredGrades.length === 0 ? (
           <div style={{ padding: '60px 20px', textAlign: 'center', color: '#9ca3af' }}>
             <i className="fa-solid fa-book" style={{ fontSize: 48, display: 'block', marginBottom: 12, opacity: 0.4 }}></i>
-            <p style={{ fontSize: 14, fontWeight: 500 }}>Aucune note pour {filterClass} — {filterTrimestre}</p>
+            <p style={{ fontSize: 14, fontWeight: 500 }}>Aucune note pour {filterClass} — {filterTrimestre === 'T1' ? '1er' : filterTrimestre === 'T2' ? '2ème' : '3ème'} Trimestre</p>
             <button onClick={openAdd} className="btn btn-primary" style={{ marginTop: 12 }}>
               <i className="fa-solid fa-plus"></i> Saisir les premières notes
             </button>
@@ -270,8 +422,10 @@ const Grades = () => {
               <thead>
                 <tr>
                   <th style={{ background: '#0d7a5e', color: '#fff', padding: '8px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>Élève</th>
-                  {subjects.map(s => (
-                    <th key={s} style={{ background: subjectColors[s], color: '#fff', padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>{s}</th>
+                  <th style={{ background: '#b8860b', color: '#fff', padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>Matricule</th>
+                  <th style={{ background: '#7c3aed', color: '#fff', padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>Trimestre</th>
+                  {tableSubjects.map(s => (
+                    <th key={s} style={{ background: tableSubjectColors[s], color: '#fff', padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>{s}</th>
                   ))}
                   <th style={{ background: '#b8860b', color: '#fff', padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>Moy.</th>
                   <th style={{ background: '#7c3aed', color: '#fff', padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>Mention</th>
@@ -280,24 +434,33 @@ const Grades = () => {
               </thead>
               <tbody>
                 {filteredGrades.map((g, i) => {
-                  const average = avg(g, subjects);
-                  const { label: mentionLabel, style: mentionStyle } = getMention(average);
+                  const average = avg(g, tableSubjects);
+                  const { label: mentionLabel, style: mentionStyle } = getMention(average, tableMaxScore);
                   return (
-                    <tr key={g.id}>
+                    <tr key={g._id || g.id}>
                       <td style={{ padding: '8px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          {g.photo ? (
-                            <img src={g.photo} alt={g.studentName} style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
-                          ) : (
-                            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ecfdf5', color: '#0d7a5e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                              {g.studentName?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                            </div>
-                          )}
+                          {(() => {
+                            const photoUrl = g.photo || students.find(s => s.name === g.studentName)?.photo;
+                            return photoUrl ? (
+                              <img src={photoUrl} alt={g.studentName} style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+                            ) : (
+                              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ecfdf5', color: '#0d7a5e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                                {g.studentName?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                              </div>
+                            );
+                          })()}
                           <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>{g.studentName}</div>
                         </div>
                       </td>
-                      {subjects.map(s => {
-                        const gc = g[s] !== undefined && g[s] !== '' ? gradeColor(Number(g[s])) : { color: '#d4cfc4', bg: 'transparent' };
+                      <td style={{ padding: '8px 16px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: '#78716c' }}>{g.matricule || '—'}</span>
+                      </td>
+                      <td style={{ padding: '8px 16px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#7c3aed' }}>{g.trimestre === 'T1' ? '1er' : g.trimestre === 'T2' ? '2ème' : '3ème'}</span>
+                      </td>
+                      {tableSubjects.map(s => {
+                        const gc = g[s] !== undefined && g[s] !== '' ? gradeColor(Number(g[s]), tableMaxScore) : { color: '#d4cfc4', bg: 'transparent' };
                         return (
                           <td key={s} style={{ padding: '8px 16px', textAlign: 'center' }}>
                             <span style={{ fontSize: 13, fontWeight: 700, color: gc.color }}>{g[s] ?? '—'}</span>
@@ -320,7 +483,7 @@ const Grades = () => {
                           <button onClick={() => openEdit(g)} className="btn btn-sm btn-primary" title="Modifier">
                             <i className="fa-solid fa-pen"></i>
                           </button>
-                          <button onClick={() => handleDelete(g.id)} className="btn btn-sm btn-danger" title="Supprimer">
+                          <button onClick={() => handleDelete(g._id || g.id)} className="btn btn-sm btn-danger" title="Supprimer">
                             <i className="fa-solid fa-trash-can"></i>
                           </button>
                         </div>
@@ -331,7 +494,7 @@ const Grades = () => {
               </tbody>
               <tfoot>
                 <tr style={{ background: '#f8f7f3' }}>
-                  <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, color: '#57534e', textTransform: 'uppercase' }}>Moy. classe</td>
+                  <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, color: '#57534e', textTransform: 'uppercase' }} colSpan={3}>Moy. classe</td>
                   {colAvgs.map((m, i) => (
                     <td key={i} style={{ padding: '8px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#1a1a2e' }}>{m}</td>
                   ))}
@@ -361,13 +524,24 @@ const Grades = () => {
               <button onClick={() => setShowModal(false)} className="modal-close"><i className="fa-solid fa-xmark"></i></button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label>Classe</label>
-                <select value={form.class} onChange={e => setForm(f => ({ ...f, class: e.target.value, studentName: '' }))}>
-                  {classNames.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Classe</label>
+                  <select value={form.class} onChange={e => setForm(f => ({ ...f, class: e.target.value, studentName: '' }))}>
+                    <option value="">Sélectionner une classe</option>
+                    {classNames.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Trimestre</label>
+                  <select value={form.trimestre} onChange={e => setForm(f => ({ ...f, trimestre: e.target.value }))}>
+                    <option value="">Sélectionner un trimestre</option>
+                    <option value="T1">1er Trimestre</option>
+                    <option value="T2">2ème Trimestre</option>
+                    <option value="T3">3ème Trimestre</option>
+                  </select>
+                </div>
               </div>
-              <p style={{ fontSize: 12, color: '#78716c', marginBottom: 16 }}>{form.class || filterClass} — {filterTrimestre === 'T1' ? '1er' : filterTrimestre === 'T2' ? '2ème' : '3ème'} Trimestre</p>
               <div className="form-group">
                 <label>Matricule</label>
                 <div className="matricule-search">
@@ -378,7 +552,11 @@ const Grades = () => {
               <div className="form-group required">
                 <label>Élève</label>
                 {students.filter(s => s.class === (form.class || filterClass)).length > 0 && !editingGrade ? (
-                  <select required value={form.studentName} onChange={e => setForm(f => ({ ...f, studentName: e.target.value }))}>
+                  <select required value={form.studentName} onChange={e => {
+                    const name = e.target.value;
+                    const student = students.find(s => s.name === name);
+                    setForm(f => ({ ...f, studentName: name, matricule: student?.matricule || '' }));
+                  }}>
                     <option value="">Sélectionner un élève</option>
                     {students.filter(s => s.class === (form.class || filterClass)).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     <option value="__custom__">Autre (saisir manuellement)</option>
@@ -391,14 +569,14 @@ const Grades = () => {
                 )}
               </div>
               <div className="form-group">
-                <label style={{ marginBottom: 10 }}>Notes par matière (sur 20)</label>
+                <label style={{ marginBottom: 10 }}>Notes par matière (sur {maxScore})</label>
                 <div className="form-row" style={{ flexWrap: 'wrap', gap: 0 }}>
                   {filteredSubjects.length > 0 ? filteredSubjects.map((s, idx) => (
                     <div className="form-group" key={s} style={{ flex: '0 0 50%', maxWidth: '50%' }}>
                       <label style={{ fontSize: 11, color: subjectColors[s], fontWeight: 600 }}>{s}</label>
-                      <input type="number" min="0" max="20" step="0.5" placeholder="—" value={form[s]} onChange={e => setForm(f => ({ ...f, [s]: e.target.value }))} />
+                      <input type="number" min="0" max={maxScore} step="0.5" placeholder="—" value={form[s]} onChange={e => setForm(f => ({ ...f, [s]: e.target.value }))} />
                     </div>
-                  )) : <p style={{ fontSize: 12, color: '#9ca3af', padding: 12 }}>Aucune matière pour ce niveau</p>}
+                  )) : <p style={{ fontSize: 12, color: '#9ca3af', padding: 12 }}>{form.class ? 'Aucune matière pour ce niveau' : 'Sélectionnez une classe pour voir les matières'}</p>}
                 </div>
               </div>
               <div className="modal-actions">
@@ -444,28 +622,45 @@ const Grades = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {subjects.map((s, idx) => {
+                  {(() => {
+                    const bulletinLevel = getLevelForClass(selectedGrade.class);
+                    const bulletinSubjects = classes.find(c => c.name === selectedGrade.class)?.subjects || [...new Set(subjectData.filter(sd => !bulletinLevel || sd.level === bulletinLevel).map(sd => sd.name))];
+                    return bulletinSubjects.map((s, idx) => {
                     const gvalue = selectedGrade[s] !== undefined && selectedGrade[s] !== '' ? Number(selectedGrade[s]) : null;
+                    const bulletinMax = bulletinLevel === 'Primaire' ? 10 : 20;
                     return (
-                      <tr key={idx}>
+                      <tr key={s}>
                         <td style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, color: subjectColors[s] }}>{s}</td>
                         <td style={{ padding: '8px 16px', textAlign: 'center' }}>
                           {gvalue !== null ? (
-                            <span style={{ fontWeight: 700, fontSize: 13, color: gvalue >= 15 ? '#065f46' : gvalue >= 10 ? '#1a1a2e' : '#b91c1c' }}>{gvalue}</span>
+                            <span style={{ fontWeight: 700, fontSize: 13, color: gvalue >= bulletinMax * 0.75 ? '#065f46' : gvalue >= bulletinMax * 0.5 ? '#1a1a2e' : '#b91c1c' }}>{gvalue}</span>
                           ) : <span style={{ color: '#d4cfc4' }}>—</span>}
                         </td>
                         <td style={{ padding: '8px 16px', textAlign: 'center', fontSize: 12, color: '#57534e' }}>
-                          {gvalue !== null ? (gvalue >= 15 ? 'Excellent' : gvalue >= 12 ? 'Bien' : gvalue >= 10 ? 'Passable' : 'Insuffisant') : 'Non noté'}
+                          {gvalue !== null ? (gvalue >= bulletinMax * 0.75 ? 'Excellent' : gvalue >= bulletinMax * 0.6 ? 'Bien' : gvalue >= bulletinMax * 0.5 ? 'Passable' : 'Insuffisant') : 'Non noté'}
                         </td>
                       </tr>
                     );
-                  })}
+                    });
+                  })()}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#f8f7f3' }}>
                     <td style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700 }}>Moyenne générale</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'center', fontWeight: 700 }}>{avg(selectedGrade, subjects) || '—'}</td>
-                    <td style={{ padding: '8px 16px', textAlign: 'center', fontWeight: 600, fontSize: 12 }}>{getMention(avg(selectedGrade, subjects)).label}</td>
+                    <td style={{ padding: '8px 16px', textAlign: 'center', fontWeight: 700 }}>
+                      {(() => { 
+                        const bl = getLevelForClass(selectedGrade.class);
+                        const bs = classes.find(c => c.name === selectedGrade.class)?.subjects || [...new Set(subjectData.filter(sd => !bl || sd.level === bl).map(sd => sd.name))];
+                        return avg(selectedGrade, bs) || '—';
+                      })()}
+                    </td>
+                    <td style={{ padding: '8px 16px', textAlign: 'center', fontWeight: 600, fontSize: 12 }}>
+                      {(() => { 
+                        const bl = getLevelForClass(selectedGrade.class);
+                        const bs = classes.find(c => c.name === selectedGrade.class)?.subjects || [...new Set(subjectData.filter(sd => !bl || sd.level === bl).map(sd => sd.name))];
+                        return getMention(avg(selectedGrade, bs), bl === 'Primaire' ? 10 : 20).label;
+                      })()}
+                    </td>
                   </tr>
                 </tfoot>
               </table>

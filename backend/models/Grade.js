@@ -8,7 +8,7 @@ const gradeSchema = new mongoose.Schema({
   trimestre: { type: String, enum: ['T1', 'T2', 'T3'], required: true },
   photo: { type: String },
   grades: { type: Map, of: Number },
-}, { timestamps: true });
+}, { timestamps: true, strict: false });
 
 gradeSchema.index({ studentName: 1, class: 1, trimestre: 1 }, { unique: true });
 

@@ -9,7 +9,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const {
     students, teachers, classes, payments, grades,
-    calendarEvents,
+    calendarEvents, notifications,
   } = useAppData();
   const { user: currentUser } = useAuth();
 
@@ -44,6 +44,8 @@ const Dashboard = () => {
   });
   const monthlyCollected = monthlyPayments.reduce((s, p) => s + p.amount, 0);
   const uniqPayees = new Set(payments.filter(p => p.status === 'Payé').map(p => p.student)).size;
+  const uniqLate = new Set(payments.filter(p => p.status === 'En retard').map(p => p.student)).size;
+  const uniqUnpaid = new Set(payments.filter(p => p.status === 'Impayé').map(p => p.student)).size;
   const totalUnpaid = Math.max(0, activeStudents - uniqPayees);
   const objectif = 300000;
   const pctAtteint = Math.min(100, Math.round((totalCollected / objectif) * 100));
@@ -59,19 +61,23 @@ const Dashboard = () => {
   }));
   const maxClassCount = Math.max(...classDistribution.map(c => c.count), 1);
 
-  /* ── Recent Evaluations ───────────────────────────── */
-  const recentEvals = useMemo(() => {
-    return [...grades].reverse().slice(0, 5).map(g => {
-      const subjects = ['Maths','Français','Anglais','Histoire','Sciences','Physique'];
+  /* ── Meilleurs élèves ─────────────────────────────── */
+  const topStudents = useMemo(() => {
+    const subjects = ['Maths','Français','Anglais','Histoire','Sciences','Physique'];
+    const studentAverages = {};
+    grades.forEach(g => {
       const vals = subjects.map(s => Number(g[s])).filter(v => !isNaN(v));
-      const avg = vals.length > 0 ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length / 20) * 100) : 0;
-      return { ...g, avg };
+      if (vals.length === 0) return;
+      const rawAvg = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const pct = Math.round((rawAvg / 20) * 100);
+      if (!studentAverages[g.studentName] || pct > studentAverages[g.studentName].avg) {
+        studentAverages[g.studentName] = { name: g.studentName, class: g.class, avg: pct, photo: g.photo || students.find(s => s.name === g.studentName)?.photo };
+      }
     });
-  }, [grades]);
+    return Object.values(studentAverages).sort((a, b) => b.avg - a.avg).slice(0, 5);
+  }, [grades, students]);
 
-  const overallAvg = recentEvals.length > 0
-    ? Math.round(recentEvals.reduce((s, e) => s + e.avg, 0) / recentEvals.length)
-    : 0;
+  const bestAvg = topStudents.length > 0 ? topStudents[0].avg : 0;
 
   /* ── Dashboard Events ─────────────────────────────── */
   const dashboardEvents = calendarEvents.slice(0, 4).map(e => ({
@@ -82,10 +88,18 @@ const Dashboard = () => {
   }));
 
   /* ── Announcements ────────────────────────────────── */
-  const dashboardAnnouncements = [
-    { badge: 'Info', badgeBg: '#ecfdf5', badgeColor: '#0d7a5e', title: 'Réunion des enseignants', text: 'Réunion trimestrielle prévue le 15 juin à 10h.' },
-    { badge: 'Important', badgeBg: '#fef2f2', badgeColor: '#b91c1c', title: 'Examens fin d\'année', text: 'Les examens du 3ème trimestre débutent le 20 juin.' },
-  ];
+  const dashboardAnnouncements = useMemo(() => {
+    return notifications
+      .filter(n => n.important)
+      .slice(0, 5)
+      .map(n => ({
+        badge: n.important ? 'Important' : 'Info',
+        badgeBg: n.important ? '#fef2f2' : '#ecfdf5',
+        badgeColor: n.important ? '#b91c1c' : '#0d7a5e',
+        title: n.title || n.body?.slice(0, 40) || 'Notification',
+        text: n.body || n.title || '',
+      }));
+  }, [notifications]);
 
   const newThisYear = students.filter(s => {
     if (!s.id) return false;
@@ -134,12 +148,12 @@ const Dashboard = () => {
         </div>
         <div className="dash-stat-card">
           <div className="dash-stat-icon" style={{ background: '#fffbeb', color: '#b8860b' }}>
-            <i className="fa-solid fa-check-circle"></i>
+            <i className="fa-solid fa-exclamation-triangle"></i>
           </div>
           <div>
-            <div className="dash-stat-value">{present}</div>
-            <div className="dash-stat-label">Présents aujourd'hui</div>
-            <div className="dash-stat-sub">{totalStudents > 0 ? `Taux: ${pctPresent}%` : 'Aucune donnée'}</div>
+            <div className="dash-stat-value">{totalUnpaid}</div>
+            <div className="dash-stat-label">Élèves impayés</div>
+            <div className="dash-stat-sub">{activeStudents > 0 ? `${Math.round((totalUnpaid / activeStudents) * 100)}% des élèves` : 'Aucune donnée'}</div>
           </div>
         </div>
         <div className="dash-stat-card">
@@ -157,37 +171,52 @@ const Dashboard = () => {
       {/* ── Row 2: 3 Columns ───────────────────────────── */}
       <div className="dash-grid-3">
 
-        {/* Présences */}
+        {/* Paiements récents */}
         <div className="dash-card">
           <div className="dash-card-header">
-            <h3><i className="fa-solid fa-check-circle" style={{ color: '#0d7a5e' }}></i> Résumé des présences</h3>
-            <Link to="/students" className="dash-btn-link">Rapport <i className="fa-solid fa-arrow-right" style={{ fontSize: 10 }}></i></Link>
+            <h3><i className="fa-solid fa-credit-card" style={{ color: '#0d7a5e' }}></i> Paiements récents</h3>
+            <Link to="/payments" className="dash-btn-link">Voir tout <i className="fa-solid fa-arrow-right" style={{ fontSize: 10 }}></i></Link>
           </div>
-          <div className="presences-numbers">
-            <div className="presence-stat">
-              <div className="presence-num">{present}</div>
-              <div className="presence-label green">Présents</div>
-              <div className="presence-pct" style={{ color: '#0d7a5e' }}>{pctPresent}%</div>
-            </div>
-            <div className="presence-stat">
-              <div className="presence-num">{absent}</div>
-              <div className="presence-label red">Absents</div>
-              <div className="presence-pct" style={{ color: '#b91c1c' }}>{pctAbsent}%</div>
-            </div>
-            <div className="presence-stat">
-              <div className="presence-num">0</div>
-              <div className="presence-label orange">Retards</div>
-              <div className="presence-pct" style={{ color: '#b8860b' }}>0%</div>
-            </div>
-          </div>
-          <div className="presence-bar-row">
-            <div className="presence-bar-track">
-              <div className="presence-bar-seg" style={{ width: `${pctPresent}%`, background: '#0d7a5e' }}></div>
-              <div className="presence-bar-seg" style={{ width: `${pctAbsent}%`, background: '#b91c1c' }}></div>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {(() => {
+              const recent = [...payments]
+                .sort((a, b) => new Date(b.datePaiement || b.createdAt || 0) - new Date(a.datePaiement || a.createdAt || 0))
+                .slice(0, 5);
+              return recent.length > 0 ? recent.map((p, i) => (
+                <div key={p.id || i} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
+                  borderBottom: i < recent.length - 1 ? '1px solid #f0ede8' : 'none'
+                }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, background: '#f1f0ed', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#a8a29e' }}>
+                    {p.photo ? (
+                      <img src={p.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <i className="fa-solid fa-user"></i>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#1f2937' }}>{p.student || p.studentName || '—'}</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.date || ''}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#0d7a5e' }}>{p.amount?.toLocaleString('fr') || '0'} GNF</div>
+                    <span style={{
+                      display: 'inline-block', fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 10,
+                      background: p.status === 'Payé' ? '#ecfdf5' : p.status === 'En retard' ? '#fffbeb' : '#fef2f2',
+                      color: p.status === 'Payé' ? '#065f46' : p.status === 'En retard' ? '#b8860b' : '#b91c1c'
+                    }}>{p.status || 'Payé'}</span>
+                  </div>
+                </div>
+              )) : (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 12 }}>
+                  <i className="fa-solid fa-credit-card" style={{ fontSize: 24, display: 'block', marginBottom: 8, opacity: 0.4 }}></i>
+                  Aucun paiement récent
+                </div>
+              );
+            })()}
           </div>
           <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>
-            <i className="fa-solid fa-calendar-day"></i> {today}
+            <i className="fa-solid fa-arrow-up"></i> {payments.length} paiement{payments.length > 1 ? 's' : ''} au total
           </div>
         </div>
 
@@ -274,32 +303,44 @@ const Dashboard = () => {
           ))}
         </div>
 
-        {/* Évaluations récentes */}
+        {/* Meilleurs élèves */}
         <div className="dash-card">
           <div className="dash-card-header">
-            <h3><i className="fa-solid fa-clipboard-check" style={{ color: '#0d7a5e' }}></i> Évaluations récentes</h3>
-            <Link to="/grades" className="dash-btn-link">Voir tout <i className="fa-solid fa-arrow-right" style={{ fontSize: 10 }}></i></Link>
+            <h3><i className="fa-solid fa-trophy" style={{ color: '#d97706' }}></i> Meilleurs élèves</h3>
+            <Link to="/grades" className="dash-btn-link">Classement <i className="fa-solid fa-arrow-right" style={{ fontSize: 10 }}></i></Link>
           </div>
-          {recentEvals.length > 0 ? recentEvals.map((e, i) => (
-            <div className="eval-item" key={i}>
-              <div className="eval-icon" style={{ overflow: 'hidden', padding: 0 }}>
-                <i className="fa-solid fa-star" style={{ color: '#0d7a5e' }}></i>
+          {topStudents.length > 0 ? (<div style={{ display: 'flex', flexDirection: 'column' }}>
+            {topStudents.map((e, i) => (
+              <div key={e.name} style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
+                borderBottom: i < topStudents.length - 1 ? '1px solid #f0ede8' : 'none'
+              }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 12,
+                  background: i === 0 ? '#fef3c7' : i === 1 ? '#f1f5f9' : i === 2 ? '#fef2f2' : '#f5f3ee',
+                  color: i === 0 ? '#d97706' : i === 1 ? '#475569' : i === 2 ? '#b91c1c' : '#78716c',
+                  flexShrink: 0
+                }}>{i + 1}</div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: '#f1f0ed', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#a8a29e' }}>
+                  {e.photo ? <img src={e.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <i className="fa-solid fa-user"></i>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1f2937' }}>{e.name}</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{e.class || ''}</div>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: i === 0 ? '#d97706' : '#0d7a5e' }}>{e.avg}%</div>
               </div>
-              <div className="eval-content">
-                <div className="eval-name">{e.studentName}</div>
-                <div className="eval-detail">{e.class || ''}</div>
-              </div>
-              <div className={`eval-score ${e.avg >= 75 ? 'green' : 'orange'}`}>{e.avg}%</div>
-            </div>
-          )) : (
+            ))}
+          </div>) : (
             <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>
               <i className="fa-solid fa-file-circle-plus" style={{ fontSize: 28, display: 'block', marginBottom: 8 }}></i>
-              Aucune évaluation récente
+              Aucune note disponible
             </div>
           )}
-          {recentEvals.length > 0 && (
+          {topStudents.length > 0 && (
             <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>
-              <i className="fa-solid fa-chart-simple"></i> Moyenne générale: {overallAvg}%
+              <i className="fa-solid fa-chart-simple"></i> Meilleure moyenne: {bestAvg}%
             </div>
           )}
         </div>

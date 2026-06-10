@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 
 const Header = ({ onToggleSidebar }) => {
   const navigate = useNavigate();
-  const { notifications } = useAppData();
+  const { notifications, markAllRead, markRead } = useAppData();
   const { user: currentUser, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -51,17 +51,17 @@ const Header = ({ onToggleSidebar }) => {
             <div className="topbar-dropdown notif-dropdown">
               <div className="notif-dropdown-header">
                 <span>Notifications</span>
-                {unreadCount > 0 && <button className="notif-mark-all">Tout marquer lu</button>}
+                {unreadCount > 0 && <button className="notif-mark-all" onClick={(e) => { e.stopPropagation(); markAllRead(); }}>Tout marquer lu</button>}
               </div>
               <div className="notif-dropdown-body">
                 {notifications.length === 0 ? (
                   <div className="notif-empty">Aucune notification</div>
                 ) : notifications.slice(0, 10).map(n => (
-                  <div key={n.id} className={`notif-item ${n.read ? '' : 'notif-unread'}`}>
+                  <div key={n.id} className={`notif-item ${n.read ? '' : 'notif-unread'}`} onClick={() => { if (!n.read) markRead(n.id); }}>
                     <div className="notif-icon"><i className="fa-solid fa-circle-info"></i></div>
                     <div className="notif-content">
-                      <div className="notif-message">{n.message}</div>
-                      <div className="notif-time">{n.date}</div>
+                      <div className="notif-message">{n.title || n.body || n.message}</div>
+                      <div className="notif-time">{n.time || n.date}</div>
                     </div>
                     {!n.read && <div className="notif-dot"></div>}
                   </div>

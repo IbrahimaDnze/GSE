@@ -5,7 +5,7 @@ const classSchema = new mongoose.Schema({
   niveau: { type: String, required: true },
   description: { type: String },
   max: { type: Number, default: 0 },
-  subjects: { type: Number, default: 0 },
+  subjects: { type: [String], default: [] },
   actif: { type: Boolean, default: true }
 }, { timestamps: true });
 

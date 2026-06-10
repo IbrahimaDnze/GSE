@@ -9,11 +9,9 @@ const menuItems = [
   { to: '/teachers',      label: 'Enseignants',     icon: 'fa-chalkboard-user' },
   { to: '/classes',       label: 'Classes',         icon: 'fa-school' },
   { to: '/enrollments',   label: 'Inscriptions',    icon: 'fa-file-pen' },
-  { to: '/payments',      label: 'Paiements',       icon: 'fa-money-bill-transfer' },
+  { to: '/payments',      label: 'Paiements',       icon: 'fa-credit-card' },
   { to: '/grades',        label: 'Notes',           icon: 'fa-book-quran' },
-  { to: '/schedule',      label: 'Emploi du temps', icon: 'fa-calendar-days' },
   { to: '/notifications', label: 'Notifications',   icon: 'fa-bell' },
-  { to: '/reports',       label: 'Rapports',        icon: 'fa-chart-simple' },
   { to: '/cartes',        label: 'Cartes',          icon: 'fa-id-card' },
 ];
 

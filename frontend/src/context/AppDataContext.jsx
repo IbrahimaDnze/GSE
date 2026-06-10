@@ -12,14 +12,14 @@ const normalizeClass = (c) => ({
   elevesCount: c.nombreEleves !== undefined ? c.nombreEleves : (c.elevesCount || 0),
   teacher: c.teacher || '',
   max: c.max || 0,
-  subjects: c.subjects || '',
+  subjects: Array.isArray(c.subjects) ? c.subjects : (c.subjects ? c.subjects.split(', ').filter(Boolean) : []),
 });
 
 const denormalizeClass = (data) => ({
   name: data.name,
   niveau: data.level || data.niveau,
   max: Number(data.max) || 0,
-  subjects: Number(data.subjects) || 0,
+  subjects: Array.isArray(data.subjects) ? data.subjects : [],
   actif: data.status === 'Actif' || data.status === undefined || data.status === '' || data.actif,
   description: data.description || '',
 });

@@ -278,8 +278,8 @@ const Payments = () => {
                   <tr key={p.id}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        {p.photo ? (
-                          <img src={p.photo} alt={p.student} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+                        {p.photo || students.find(s => s.name === p.student)?.photo ? (
+                          <img src={p.photo || students.find(s => s.name === p.student)?.photo} alt={p.student} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
                         ) : (
                           <div className={`${AVATAR_COLORS[i % AVATAR_COLORS.length]} avatar-initials`} style={{ width: 32, height: 32, fontSize: 11 }}>
                             {p.initials || p.student?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
@@ -429,9 +429,13 @@ const Payments = () => {
             </div>
             <div style={{ padding: '8px 24px 24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-                <div className={viewItem.color || 'bg-primary-600'} style={{ width: 52, height: 52, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700 }}>
-                  {viewItem.initials || viewItem.student?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                </div>
+                {viewItem.photo || students.find(s => s.name === viewItem.student)?.photo ? (
+                  <img src={viewItem.photo || students.find(s => s.name === viewItem.student)?.photo} alt={viewItem.student} style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover' }} />
+                ) : (
+                  <div className={viewItem.color || 'bg-primary-600'} style={{ width: 52, height: 52, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 700 }}>
+                    {viewItem.initials || viewItem.student?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                )}
                 <div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: '#1a1a2e' }}>{viewItem.student}</div>
                   <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, marginTop: 4, ...statusBadge(viewItem.status) }}>
