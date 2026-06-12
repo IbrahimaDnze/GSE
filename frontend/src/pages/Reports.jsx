@@ -1,20 +1,15 @@
 import { useAppData } from '../context/AppDataContext';
 import { exportToCSV } from '../utils/export';
 
-const SUBJECTS = ['Maths', 'Français', 'Anglais', 'Histoire', 'Sciences', 'Physique'];
-const SUBJECT_COLORS = {
-  Maths: '#122d51',
-  Français: '#db2777',
-  Anglais: '#10b981',
-  Histoire: '#d97706',
-  Sciences: '#7c3aed',
-  Physique: '#0891b2',
-};
+const PALETTE = ['#122d51','#db2777','#10b981','#d97706','#7c3aed','#0891b2','#be185d','#0d9488','#ca8a04','#1d4ed8'];
+const EXCLUDED_KEYS = new Set(['_id','id','studentName','matricule','class','trimestre','photo','createdAt','updatedAt','__v']);
 
 const MONTH_MAP = {
   'janv.': 'Jan', 'févr.': 'Fév', 'mars': 'Mar', 'avr.': 'Avr', 'mai': 'Mai',
   'juin': 'Jun', 'juil.': 'Jul', 'août': 'Aoû', 'sept.': 'Sep', 'oct.': 'Oct',
   'nov.': 'Nov', 'déc.': 'Déc',
+  'janvier': 'Jan', 'février': 'Fév', 'avril': 'Avr', 'juillet': 'Jul',
+  'septembre': 'Sep', 'octobre': 'Oct', 'novembre': 'Nov', 'décembre': 'Déc',
 };
 const MONTH_ORDER = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
@@ -24,13 +19,17 @@ const getMonthKey = (dateStr) => {
   return MONTH_MAP[parts[1]] || parts[1] || '';
 };
 
-const avgOf = (gradeObj) => {
-  const scores = SUBJECTS.map(s => Number(gradeObj[s])).filter(n => !isNaN(n) && n >= 0);
+const avgOf = (gradeObj, subjectList) => {
+  const scores = subjectList.map(s => Number(gradeObj[s])).filter(n => !isNaN(n) && n >= 0);
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 };
 
-const Reports = () => {
+  const Reports = () => {
   const { payments, students, grades } = useAppData();
+
+  const subjectKeys = [...new Set(grades.flatMap(g => Object.keys(g).filter(k => !EXCLUDED_KEYS.has(k) && typeof g[k] === 'number')))];
+  const subjectColors = {};
+  subjectKeys.forEach((s, i) => { subjectColors[s] = PALETTE[i % PALETTE.length]; });
 
   const revenueByMonth = {};
   payments.forEach(p => {
@@ -54,20 +53,20 @@ const Reports = () => {
 
   const studentAverages = grades
     .map(g => {
-      const a = avgOf(g);
+      const a = avgOf(g, subjectKeys);
       return a !== null ? { name: g.studentName, avg: parseFloat(a.toFixed(1)), class: g.class } : null;
     })
     .filter(Boolean)
     .sort((a, b) => b.avg - a.avg)
     .slice(0, 5);
 
-  const subjectPerf = SUBJECTS.map(subject => {
+  const subjectPerf = subjectKeys.map(subject => {
     const scores = grades.map(g => Number(g[subject])).filter(n => !isNaN(n) && n >= 0);
     const avg = scores.length > 0 ? parseFloat((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)) : null;
-    return { subject, avg, color: SUBJECT_COLORS[subject] || '#122d51' };
+    return { subject, avg, color: subjectColors[subject] };
   }).filter(s => s.avg !== null);
 
-  const allAvgs = grades.map(g => avgOf(g)).filter(v => v !== null);
+  const allAvgs = grades.map(g => avgOf(g, subjectKeys)).filter(v => v !== null);
   const successRate = allAvgs.length > 0 ? Math.round((allAvgs.filter(a => a >= 10).length / allAvgs.length) * 100) : null;
   const generalAvg  = allAvgs.length > 0 ? (allAvgs.reduce((a, b) => a + b, 0) / allAvgs.length).toFixed(1) : null;
   const activePct   = students.length > 0 ? Math.round((students.filter(s => s.status === 'Actif').length / students.length) * 100) : null;

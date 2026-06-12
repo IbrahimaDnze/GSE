@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { uploadImage } = require('../config/cloudinary');
@@ -58,6 +59,44 @@ router.put('/profile', protect, async (req, res) => {
     res.json({ id: user._id, nom: user.nom, email: user.email, role: user.role, telephone: user.telephone, photo: user.photo });
   } catch (error) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email requis' });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: 'Aucun compte avec cet email' });
+    const code = crypto.randomInt(100000, 999999).toString();
+    user.resetPasswordToken = code;
+    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+    await user.save();
+    console.log(`[PasswordReset] Code pour ${email} : ${code}`);
+    res.json({ message: 'Code de reinitialisation envoye', code });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, code, motDePasse } = req.body;
+    if (!email || !code || !motDePasse) return res.status(400).json({ message: 'Email, code et nouveau mot de passe requis' });
+    const user = await User.findOne({
+      email,
+      resetPasswordToken: code,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+    if (!user) return res.status(400).json({ message: 'Code invalide ou expire' });
+    user.motDePasse = motDePasse;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+    console.log(`[PasswordReset] Mot de passe reinitialise pour ${email}`);
+    res.json({ message: 'Mot de passe reinitialise avec succes' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 

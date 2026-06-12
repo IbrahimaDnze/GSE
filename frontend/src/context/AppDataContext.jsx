@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import api from '../api/axios';
 
 const AppDataContext = createContext(null);
@@ -43,7 +43,9 @@ const normalizePayment = (p) => {
     amount: p.montant !== undefined ? p.montant : p.amount,
     method: METHOD_MAP_REV[p.modePaiement] || p.modePaiement || p.method,
     type: TYPE_MAP_REV[p.type] || p.type,
+    status: p.status === 'Impayé' ? 'En attente' : p.status,
     date: p.datePaiement ? new Date(p.datePaiement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : (p.date || ''),
+    rawDate: p.datePaiement || p.createdAt || null,
     photo: studentPhoto,
     studentId: student._id || p.studentId,
   };
@@ -55,12 +57,12 @@ const denormalizePayment = (data) => ({
   type: TYPE_MAP[data.type] || data.type,
   montant: Number(data.amount),
   modePaiement: METHOD_MAP[data.method] || data.method,
-  datePaiement: data.date ? new Date(data.date) : new Date(),
+  datePaiement: data.rawDate ? new Date(data.rawDate) : (data.date ? new Date(data.date) : new Date()),
   mois: data.mois || '',
   annee: data.annee || new Date().getFullYear(),
   reference: data.reference || '',
   notes: data.notes || '',
-  status: data.status || 'Payé',
+  status: data.status === 'En attente' ? 'Impayé' : (data.status || 'Payé'),
   matricule: data.matricule || '',
 });
 
@@ -408,14 +410,14 @@ export const AppDataProvider = ({ children }) => {
     setScheduleEvents(prev => prev.filter(e => e._id !== id));
   }, []);
 
-  const calendarEvents = scheduleEvents.slice(0, 4).map(e => ({
+  const calendarEvents = useMemo(() => scheduleEvents.slice(0, 4).map(e => ({
     day: new Date().getDate().toString().padStart(2, '0'),
     month: new Date().toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase().replace('.', ''),
     title: e.subject || e.class || 'Événement',
     time: e.time || '',
-  }));
+  })), [scheduleEvents]);
 
-  const value = {
+  const value = useMemo(() => ({
     loading, students, addStudent, updateStudent, deleteStudent,
     teachers, addTeacher, updateTeacher, deleteTeacher,
     classes, addClass, updateClass, deleteClass,
@@ -426,7 +428,19 @@ export const AppDataProvider = ({ children }) => {
     notifications, addNotification, markRead, markAllRead, removeNotification,
     scheduleEvents, addScheduleEvent, deleteScheduleEvent,
     calendarEvents,
-  };
+  }), [
+    loading, students, teachers, classes, subjects, subjectData,
+    enrollments, payments, grades, notifications, scheduleEvents,
+    addStudent, updateStudent, deleteStudent,
+    addTeacher, updateTeacher, deleteTeacher,
+    addClass, updateClass, deleteClass,
+    addSubject, deleteSubject, fetchSubjects,
+    addEnrollment, updateEnrollment, deleteEnrollment,
+    addPayment, updatePayment, deletePayment, syncPaymentWithStudent,
+    addGrade, updateGrade, deleteGrade, syncGradeWithStudent,
+    addNotification, markRead, markAllRead, removeNotification,
+    addScheduleEvent, deleteScheduleEvent,
+  ]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 };

@@ -524,15 +524,15 @@ const Grades = () => {
               <button onClick={() => setShowModal(false)} className="modal-close"><i className="fa-solid fa-xmark"></i></button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-                <div className="form-group" style={{ flex: 1 }}>
+              <div className="form-row">
+                <div className="form-group">
                   <label>Classe</label>
                   <select value={form.class} onChange={e => setForm(f => ({ ...f, class: e.target.value, studentName: '' }))}>
                     <option value="">Sélectionner une classe</option>
                     {classNames.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
+                <div className="form-group">
                   <label>Trimestre</label>
                   <select value={form.trimestre} onChange={e => setForm(f => ({ ...f, trimestre: e.target.value }))}>
                     <option value="">Sélectionner un trimestre</option>
@@ -570,7 +570,7 @@ const Grades = () => {
               </div>
               <div className="form-group">
                 <label style={{ marginBottom: 10 }}>Notes par matière (sur {maxScore})</label>
-                <div className="form-row" style={{ flexWrap: 'wrap', gap: 0 }}>
+                <div className="form-row form-row-subjects" style={{ flexWrap: 'wrap', gap: 0 }}>
                   {filteredSubjects.length > 0 ? filteredSubjects.map((s, idx) => (
                     <div className="form-group" key={s} style={{ flex: '0 0 50%', maxWidth: '50%' }}>
                       <label style={{ fontSize: 11, color: subjectColors[s], fontWeight: 600 }}>{s}</label>

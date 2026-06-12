@@ -62,8 +62,9 @@ const Dashboard = () => {
   const maxClassCount = Math.max(...classDistribution.map(c => c.count), 1);
 
   /* ── Meilleurs élèves ─────────────────────────────── */
+  const EXCLUDED_KEYS = new Set(['_id','id','studentName','matricule','class','trimestre','photo','createdAt','updatedAt','__v']);
   const topStudents = useMemo(() => {
-    const subjects = ['Maths','Français','Anglais','Histoire','Sciences','Physique'];
+    const subjects = [...new Set(grades.flatMap(g => Object.keys(g).filter(k => !EXCLUDED_KEYS.has(k) && typeof g[k] === 'number')))];
     const studentAverages = {};
     grades.forEach(g => {
       const vals = subjects.map(s => Number(g[s])).filter(v => !isNaN(v));
@@ -180,7 +181,7 @@ const Dashboard = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {(() => {
               const recent = [...payments]
-                .sort((a, b) => new Date(b.datePaiement || b.createdAt || 0) - new Date(a.datePaiement || a.createdAt || 0))
+                .sort((a, b) => new Date(b.rawDate || b.datePaiement || b.createdAt || 0) - new Date(a.rawDate || a.datePaiement || a.createdAt || 0))
                 .slice(0, 5);
               return recent.length > 0 ? recent.map((p, i) => (
                 <div key={p.id || i} style={{

@@ -8,7 +8,7 @@ const STATUS_LIST = ['Payé', 'En attente', 'En retard'];
 
 const MOIS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
-const EMPTY_FORM = { student: '', matricule: '', type: 'Scolarité', amount: '', method: 'Virement', status: 'En attente' };
+const EMPTY_FORM = { student: '', matricule: '', type: 'Scolarité', amount: '', method: 'Virement', status: 'En attente', date: '' };
 
 const typeBadgeStyle = (t) => {
   const colors = {
@@ -95,7 +95,8 @@ const Payments = () => {
   };
 
   const openEdit = (p) => {
-    setForm({ student: p.student, matricule: p.matricule || '', type: p.type, amount: String(p.amount), method: p.method, status: p.status });
+    const dateVal = p.rawDate ? new Date(p.rawDate).toISOString().split('T')[0] : (p.date ? new Date(p.date.split('/').reverse().join('-')).toISOString().split('T')[0] : '');
+    setForm({ student: p.student, matricule: p.matricule || '', type: p.type, amount: String(p.amount), method: p.method, status: p.status, date: dateVal });
     setEditItem(p);
     const found = p.matricule ? students.find(s => s.matricule === p.matricule) : null;
     setModalMatricule(found ? found.matricule || found.name : p.student);
@@ -213,7 +214,7 @@ const Payments = () => {
       <div className="stu-filters">
         <div className="stu-filter-group">
           <i className="fa-solid fa-search"></i>
-          <input type="text" placeholder="Rechercher par élève ou matricule..." value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 200 }} />
+          <input type="text" placeholder="Rechercher par élève ou matricule..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="stu-filter-group">
           <select value={filterType} onChange={e => setFilterType(e.target.value)}>
@@ -409,6 +410,10 @@ const Payments = () => {
                     {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
+              </div>
+              <div className="form-group">
+                <label>Date du paiement</label>
+                <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} max={new Date().toISOString().split('T')[0]} />
               </div>
               <div className="modal-actions">
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-cancel">Annuler</button>

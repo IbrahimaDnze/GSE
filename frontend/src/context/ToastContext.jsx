@@ -22,22 +22,12 @@ export const ToastProvider = ({ children }) => {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div style={{
-        position: 'fixed', top: 20, right: 20, zIndex: 99999,
-        display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 380,
-      }}>
+      <div className="toast-container">
         {toasts.map(t => (
-          <div key={t.id} style={{
-            padding: '12px 18px', borderRadius: 12, fontSize: 13, fontWeight: 600,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', gap: 10,
-            animation: 'slideIn 0.25s ease-out',
-            background: t.type === 'success' ? '#ecfdf5' : t.type === 'error' ? '#fef2f2' : '#fffbeb',
-            color: t.type === 'success' ? '#065f46' : t.type === 'error' ? '#b91c1c' : '#92400e',
-            border: `1px solid ${t.type === 'success' ? '#a7f3d0' : t.type === 'error' ? '#fecaca' : '#fde68a'}`,
-          }}>
-            <i className={`fa-solid ${t.type === 'success' ? 'fa-check-circle' : t.type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}`} style={{ fontSize: 16 }}></i>
+          <div key={t.id} className={`toast toast-${t.type}`}>
+            <i className={`fa-solid ${t.type === 'success' ? 'fa-check-circle' : t.type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}`}></i>
             {t.message}
-            <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6, fontSize: 14 }}>×</button>
+            <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="toast-close">×</button>
           </div>
         ))}
       </div>

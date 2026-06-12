@@ -240,7 +240,7 @@ const Cartes = () => {
             <i className="fa-solid fa-chalkboard-user"></i> Enseignants
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {onglet === 'eleve' && classes.length > 0 && (
             <div className="stu-filter-group" style={{ marginBottom: 0 }}>
               <select value={filtreClasse} onChange={e => { setFiltreClasse(e.target.value); setSelectionnes([]); }} style={{ padding: '7px 12px' }}>

@@ -186,7 +186,7 @@ const Classes = () => {
       <div className="stu-filters">
         <div className="stu-filter-group">
           <i className="fa-solid fa-search"></i>
-          <input type="text" placeholder="Rechercher une classe ou un enseignant..." value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 220 }} />
+          <input type="text" placeholder="Rechercher une classe ou un enseignant..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="stu-filter-group">
           <select value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>

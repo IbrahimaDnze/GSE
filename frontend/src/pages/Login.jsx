@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -121,6 +121,7 @@ const Login = () => {
                   <label htmlFor="password" className="block text-xs font-semibold text-slate-600">
                     Mot de passe
                   </label>
+                  <Link to="/forgot-password" className="text-xs text-primary-600 hover:text-primary-700 font-medium">Mot de passe oublié ?</Link>
                 </div>
                 <div className="relative">
                   <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,13 +168,6 @@ const Login = () => {
                 ) : 'Se connecter'}
               </button>
             </form>
-
-            <p className="mt-6 text-center text-sm text-slate-500">
-              Pas encore de compte ?{' '}
-              <Link to="/register" className="font-semibold text-primary-600 hover:text-primary-700 transition-colors">
-                Créer un compte
-              </Link>
-            </p>
           </div>
 
           <p className="text-center text-xs text-slate-400 mt-5">
